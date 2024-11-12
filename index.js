@@ -3,6 +3,7 @@ import WebSocket from 'ws';
 import dotenv from 'dotenv';
 import fastifyFormBody from '@fastify/formbody';
 import fastifyWs from '@fastify/websocket';
+import twilio from 'twilio';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -14,6 +15,16 @@ if (!OPENAI_API_KEY) {
     console.error('Missing OpenAI API key. Please set it in the .env file.');
     process.exit(1);
 }
+
+// Retrieve Twilio credentials from environment variables
+const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER } = process.env;
+
+if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE_NUMBER) {
+    console.error('Missing Twilio configuration. Please set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER in the .env file.');
+    process.exit(1);
+}
+
+const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 
 // Initialize Fastify
 const fastify = Fastify();
@@ -59,6 +70,28 @@ fastify.all('/incoming-call', async (request, reply) => {
                           </Response>`;
 
     reply.type('text/xml').send(twimlResponse);
+});
+
+// Endpoint to initiate a call
+fastify.post('/call', async (request, reply) => {
+    const { phoneNumber } = request.body;
+
+    if (!phoneNumber) {
+        return reply.status(400).send({ error: 'Phone number is required' });
+    }
+
+    try {
+        const call = await twilioClient.calls.create({
+            to: phoneNumber,
+            from: TWILIO_PHONE_NUMBER,
+            url: `http://${request.headers.host}/incoming-call`
+        });
+
+        reply.send({ message: 'Call initiated', callSid: call.sid });
+    } catch (error) {
+        console.error('Error initiating call:', error);
+        reply.status(500).send({ error: 'Failed to initiate call' });
+    }
 });
 
 // WebSocket route for media-stream
@@ -197,7 +230,7 @@ fastify.register(async (fastify) => {
                     if (response.item_id) {
                         lastAssistantItem = response.item_id;
                     }
-                    
+
                     sendMark(connection, streamSid);
                 }
 
@@ -231,7 +264,7 @@ fastify.register(async (fastify) => {
                         console.log('Incoming stream has started', streamSid);
 
                         // Reset start and media timestamp on a new stream
-                        responseStartTimestampTwilio = null; 
+                        responseStartTimestampTwilio = null;
                         latestMediaTimestamp = 0;
                         break;
                     case 'mark':
