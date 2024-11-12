@@ -40,17 +40,18 @@ const PORT = process.env.PORT || 5050; // Allow dynamic port assignment
 
 // List of Event Types to log to the console. See the OpenAI Realtime API Documentation: https://platform.openai.com/docs/api-reference/realtime
 const LOG_EVENT_TYPES = [
-    'error',
-    'response.audio_transcript.done',
-    'response.content.done',
-    'rate_limits.updated',
-    'response.done',
-    'input_audio_buffer.committed',
-    'input_audio_buffer.speech_stopped',
-    'input_audio_buffer.speech_started',
-    'input_audio_transcription',
-    'session.created',
-    'conversation.item.created'
+  "error",
+  "response.audio_transcript.done",
+  "response.content.done",
+  "rate_limits.updated",
+  "response.done",
+  "input_audio_buffer.committed",
+  "input_audio_buffer.speech_stopped",
+  "input_audio_buffer.speech_started",
+  "input_audio_transcription",
+  "session.created",
+  "conversation.item.created",
+  "conversation.item.input_audio_transcription.completed",
 ];
 
 // Show AI response elapsed timing calculations
