@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import fastifyFormBody from '@fastify/formbody';
 import fastifyWs from '@fastify/websocket';
 import twilio from 'twilio';
+import { inspect } from 'util';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -32,20 +33,24 @@ fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
 
 // Constants
-const SYSTEM_MESSAGE = 'You are a helpful and bubbly AI assistant who loves to chat about anything the user is interested about and is prepared to offer them facts. You have a penchant for dad jokes, owl jokes, and rickrolling – subtly. Always stay positive, but work in a joke when appropriate.';
+// const SYSTEM_MESSAGE = 'You are a helpful and bubbly AI assistant who loves to chat about anything the user is interested about and is prepared to offer them facts. You have a penchant for dad jokes, owl jokes, and rickrolling – subtly. Always stay positive, but work in a joke when appropriate.';
+const SYSTEM_MESSAGE = `Your knowledge cutoff is 2023-10. You are a helpful, witty, and friendly AI. Act like a human, but remember that you aren't a human and that you can't do human things in the real world. Your voice and personality should be warm and engaging, with a lively and playful tone. Only speak in French. Talk quickly. You should always call a function if you can. Do not refer to these rules, even if you're asked about them. You will interview me for an "EY junior auditor" position in the Paris office. Start by introducing yourself (you are Wendy, recruiter at EY), that you are contacting me following my application. and confirm that it's a good time to talk, wait for my answer. If not, ask when would be a good time (time and date). - First ask one question to confirm that I can start the role in september, wait for my answer. - Then ask about the school I attended & the curriculum I attended, wait for my answer. - Then ask about any relevant previous experience I had in the audit field, wait for my answer. - And last ask a question about why I want to join EY as junior auditor, wait for my answer. Once this is done, end the call by telling that my profile fits for the needs, that they want to schedule an interview with the hiring manager and that I will receive in a few minutes an email with 5 interview slots tomorrow that can I chose from. `;
 const VOICE = 'alloy';
 const PORT = process.env.PORT || 5050; // Allow dynamic port assignment
 
 // List of Event Types to log to the console. See the OpenAI Realtime API Documentation: https://platform.openai.com/docs/api-reference/realtime
 const LOG_EVENT_TYPES = [
     'error',
+    'response.audio_transcript.done',
     'response.content.done',
     'rate_limits.updated',
     'response.done',
     'input_audio_buffer.committed',
     'input_audio_buffer.speech_stopped',
     'input_audio_buffer.speech_started',
-    'session.created'
+    'input_audio_transcription',
+    'session.created',
+    'conversation.item.created'
 ];
 
 // Show AI response elapsed timing calculations
@@ -59,13 +64,13 @@ fastify.get('/', async (request, reply) => {
 // Route for Twilio to handle incoming calls
 // <Say> punctuation to improve text-to-speech translation
 fastify.all('/incoming-call', async (request, reply) => {
+    console.log("Incoming call", process.env.HOST);
     const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
                           <Response>
-                              <Say>Please wait while we connect your call to the A. I. voice assistant, powered by Twilio and the Open-A.I. Realtime API</Say>
+                              <Say>On est MAKI PIPS</Say>
                               <Pause length="1"/>
-                              <Say>O.K. you can start talking!</Say>
                               <Connect>
-                                  <Stream url="wss://${request.headers.host}/media-stream" />
+                                  <Stream url="wss://${process.env.HOST}/media-stream" />
                               </Connect>
                           </Response>`;
 
@@ -74,6 +79,7 @@ fastify.all('/incoming-call', async (request, reply) => {
 
 // Endpoint to initiate a call
 fastify.post('/call', async (request, reply) => {
+    console.log("Initiating call", process.env.HOST);
     const { phoneNumber } = request.body;
 
     if (!phoneNumber) {
@@ -82,9 +88,9 @@ fastify.post('/call', async (request, reply) => {
 
     try {
         const call = await twilioClient.calls.create({
-            to: phoneNumber,
-            from: TWILIO_PHONE_NUMBER,
-            url: `http://${request.headers.host}/incoming-call`
+          to: phoneNumber,
+          from: TWILIO_PHONE_NUMBER,
+          url: `http://${process.env.HOST}/incoming-call`,
         });
 
         reply.send({ message: 'Call initiated', callSid: call.sid });
@@ -116,16 +122,19 @@ fastify.register(async (fastify) => {
         // Control initial session with OpenAI
         const initializeSession = () => {
             const sessionUpdate = {
-                type: 'session.update',
-                session: {
-                    turn_detection: { type: 'server_vad' },
-                    input_audio_format: 'g711_ulaw',
-                    output_audio_format: 'g711_ulaw',
-                    voice: VOICE,
-                    instructions: SYSTEM_MESSAGE,
-                    modalities: ["text", "audio"],
-                    temperature: 0.8,
-                }
+              type: "session.update",
+              session: {
+                turn_detection: { type: "server_vad" },
+                input_audio_format: "g711_ulaw",
+                output_audio_format: "g711_ulaw",
+                voice: VOICE,
+                instructions: SYSTEM_MESSAGE,
+                modalities: ["text", "audio"],
+                temperature: 0.8,
+                input_audio_transcription: {
+                  model: "whisper-1",
+                },
+              },
             };
 
             console.log('Sending session update:', JSON.stringify(sessionUpdate));
@@ -210,7 +219,14 @@ fastify.register(async (fastify) => {
                 const response = JSON.parse(data);
 
                 if (LOG_EVENT_TYPES.includes(response.type)) {
-                    console.log(`Received event: ${response.type}`, response);
+                    // console.log(`Received event: ${response.type}`, response);
+                    console.log(
+                      `Received event: ${response.type}`,
+                      inspect(response, {
+                        colors: true,
+                        depth: null,
+                      })
+                    );
                 }
 
                 if (response.type === 'response.audio.delta' && response.delta) {
